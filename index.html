@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Question Answering</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3a8a, #60a5fa);
+            min-height: 100vh;
+            font-family: 'Inter', sans-serif;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 1rem;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            padding: 2rem;
+            animation: fadeIn 1s ease-in-out;
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .btn {
+            transition: all 0.3s ease;
+            transform: scale(1);
+        }
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        .response-box {
+            animation: slideIn 0.5s ease-in-out;
+        }
+        @keyframes slideIn {
+            0% { opacity: 0; transform: translateX(-20px); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">PDF Question Answering</h1>
+            <p class="text-center text-gray-600 mb-8">Upload a PDF and ask questions about its content.</p>
+            
+            <!-- PDF Upload -->
+            <div class="mb-6">
+                <label class="block text-gray-700 font-semibold mb-2">Upload PDF</label>
+                <input type="file" id="pdfInput" accept=".pdf" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="uploadPDF()" class="btn bg-blue-600 text-white px-4 py-2 rounded-md mt-4 w-full">Upload</button>
+                <div id="uploadStatus" class="mt-2 text-sm"></div>
+                <div id="uploadLoader" class="loader mt-2"></div>
+            </div>
+            
+            <!-- Query Input -->
+            <div class="mb-6">
+                <label class="block text-gray-700 font-semibold mb-2">Ask a Question</label>
+                <input type="text" id="queryInput" placeholder="e.g., What is the conclusion of this document?" class="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="submitQuery()" class="btn bg-blue-600 text-white px-4 py-2 rounded-md mt-4 w-full">Submit</button>
+                <div id="queryLoader" class="loader mt-2"></div>
+            </div>
+            
+            <!-- Response Output -->
+            <div id="responseSection" class="hidden">
+                <h2 class="text-xl font-semibold text-gray-800 mb-2">Query:</h2>
+                <p id="queryText" class="text-gray-600 mb-4"></p>
+                <h2 class="text-xl font-semibold text-gray-800 mb-2">Response:</h2>
+                <div id="responseText" class="response-box bg-gray-100 p-4 rounded-md text-gray-700"></div>
+                <div class="mt-4">
+                    <button onclick="toggleChunks()" class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-md">Show Retrieved Chunks</button>
+                    <div id="chunksSection" class="hidden mt-4">
+                        <h3 class="text-lg font-semibold text-gray-800 mb-2">Retrieved Chunks:</h3>
+                        <div id="chunksText" class="response-box bg-gray-100 p-4 rounded-md text-gray-700"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function uploadPDF() {
+            const pdfInput = document.getElementById('pdfInput');
+            const uploadStatus = document.getElementById('uploadStatus');
+            const uploadLoader = document.getElementById('uploadLoader');
+            if (!pdfInput.files[0]) {
+                uploadStatus.innerHTML = '<span class="text-red-500">Please select a PDF file.</span>';
+                return;
+            }
+            uploadStatus.innerHTML = '';
+            uploadLoader.style.display = 'block';
+            const formData = new FormData();
+            formData.append('pdf', pdfInput.files[0]);
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                uploadLoader.style.display = 'none';
+                if (response.ok) {
+                    uploadStatus.innerHTML = `<span class="text-green-500">${result.message}</span>`;
+                } else {
+                    uploadStatus.innerHTML = `<span class="text-red-500">${result.error}</span>`;
+                }
+            } catch (error) {
+                uploadLoader.style.display = 'none';
+                uploadStatus.innerHTML = `<span class="text-red-500">Error uploading PDF: ${error.message}</span>`;
+            }
+        }
+
+        async function submitQuery() {
+            const queryInput = document.getElementById('queryInput');
+            const queryText = document.getElementById('queryText');
+            const responseText = document.getElementById('responseText');
+            const chunksText = document.getElementById('chunksText');
+            const responseSection = document.getElementById('responseSection');
+            const queryLoader = document.getElementById('queryLoader');
+            const query = queryInput.value.trim();
+            if (!query) {
+                responseText.innerHTML = '<span class="text-red-500">Please enter a query.</span>';
+                return;
+            }
+            queryLoader.style.display = 'block';
+            responseSection.classList.add('hidden');
+            try {
+                const response = await fetch('/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                const result = await response.json();
+                queryLoader.style.display = 'none';
+                if (response.ok) {
+                    queryText.textContent = query;
+                    responseText.textContent = result.response;
+                    chunksText.innerHTML = result.chunks.map((chunk, i) => 
+                        `<p><strong>Chunk ${i+1} (Similarity: ${chunk.score.toFixed(4)})</strong><br>${chunk.text}</p>`
+                    ).join('');
+                    responseSection.classList.remove('hidden');
+                } else {
+                    responseText.innerHTML = `<span class="text-red-500">${result.error}</span>`;
+                    responseSection.classList.remove('hidden');
+                }
+            } catch (error) {
+                queryLoader.style.display = 'none';
+                responseText.innerHTML = `<span class="text-red-500">Error: ${error.message}</span>`;
+                responseSection.classList.remove('hidden');
+            }
+        }
+
+        function toggleChunks() {
+            const chunksSection = document.getElementById('chunksSection');
+            chunksSection.classList.toggle('hidden');
+        }
+    </script>
+</body>
+</html>
